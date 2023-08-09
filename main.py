@@ -8,14 +8,14 @@ from error_func import errorFunc
 if __name__ == '__main__':
     # Network distribution
     # - Must end with 1 for the last neuron without activation function
-    n_layer_dist = np.array([2,5,5,5,1])
+    n_layer_dist = np.array([10,10,10,1])
     dn = DumbNet(n_layer_dist,initWeight=np.NaN,actFuncType=0)
 
     # Numerical setup
     eps = 1E-06
-    tol = 1E-01
+    tol = 1E-02
     factor = 1
-    N_iter = 300
+    N_iter = 50
 
     # Errors
     eMin_list = []
@@ -25,35 +25,13 @@ if __name__ == '__main__':
     # Iterations
     n_iter_list = range(N_iter)
     for n_iter in n_iter_list:
-        """ Immediate update method
+        # Update for each x in random order
         error_list = []
-        for x_in in np.arange(-1,1,0.05):
-            for n_w in range(dn.N_weight):
-                e_init = errorFunc(dn,testFunc,x_in)
-                oldWeights = dn.getWeights()
-
-                newWeights = np.copy(oldWeights)
-                newWeights[n_w] += eps
-                dn.setWeights(newWeights)
-                    
-                e_updt = errorFunc(dn,testFunc,x_in)
-                dedx = (e_updt-e_init)/eps
-                
-                if abs(dedx)>1E-16:
-                    solWeights = np.copy(oldWeights)
-                    solWeights[n_w] -= e_init/dedx*factor
-                    dn.setWeights(solWeights)
-                    
-            # Check error
-            error_list.append(e_init)
-        """
-
-        #""" Update for each x, random order
-        error_list = []
-        x_in_list = np.arange(-1,1,0.05)
+        x_in_list = np.arange(-1.5,1.5,0.05)
         np.random.shuffle(x_in_list)
         for x_in in x_in_list:
             # Current error
+            # - Skip if already within tolerance
             e_init = errorFunc(dn,testFunc,x_in)
             error_list.append(e_init)
             if abs(e_init)<tol:
@@ -81,39 +59,6 @@ if __name__ == '__main__':
             dx1D = dx2D.reshape(-1,)
             solWeights = oldWeights+dx1D*factor
             dn.setWeights(solWeights)
-        #"""
-
-        """ Global update
-        oldWeights = dn.getWeights()
-
-        # Compute Jacobian
-        x_query_list = np.arange(-1,1,0.05)
-        N_x = np.size(x_query_list)
-        co_J2D = np.empty((N_x,dn.N_weight),dtype=float)
-        co_e2D = np.empty((N_x,1),dtype=float)
-        for n_x in range(N_x):
-            # Current value
-            x_in = x_query_list[n_x]
-            e_init = errorFunc(dn,testFunc,x_in)
-            co_e2D[n_x][0] = e_init
-            for n_w in range(dn.N_weight):
-                newWeights = np.copy(oldWeights)
-                newWeights[n_w] += eps
-                dn.setWeights(newWeights)
-                    
-                e_updt = errorFunc(dn,testFunc,x_in)
-                dedx = (e_updt-e_init)/eps
-                co_J2D[n_x][n_w] = dedx
-        co_b2D = -(co_J2D.transpose()) @ co_e2D
-        co_a2D = (co_J2D.transpose()) @ co_J2D
-        
-        # Update globally
-        dx2D = np.linalg.lstsq(co_a2D, co_b2D, rcond=None)[0]
-        dx1D = dx2D.reshape(-1,)
-        solWeights = oldWeights+dx1D*factor
-        dn.setWeights(solWeights)
-        error_list = co_e2D.reshape(-1,)
-        """
 
         # Iteration status
         eMin_list.append(min(error_list))
