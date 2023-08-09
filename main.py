@@ -2,84 +2,72 @@ import numpy as np
 import matplotlib.pyplot as plt
 from dumb_net import DumbNet
 from test_func import testFunc
+from error_func import errorFunc
 
 if __name__ == '__main__':
-    # Run the case
-    n_layer_dist = np.array([1, 3, 1])
-    #n_layer_dist = np.array([1, 5, 5, 5, 5, 5, 1])
-    dn = DumbNet(n_layer_dist,initWeight=1,actFuncType=0)
+    # Network distribution
+    # - Must end with 1 for the last neuron without activation function
+    n_layer_dist = np.array([11,1])
+    dn = DumbNet(n_layer_dist,initWeight=np.NaN,actFuncType=0)
 
-    # Test function
-    x_in = 1
-    y_ans = testFunc(x_in)
-    y_cur = dn.in2out(x_in)
-    print("y_ans = {}".format(y_ans))
-    print("y_cur = {}".format(y_cur))
-
-    # Backpropagation
-    N_layer = dn.N_layer
-    N_width = dn.N_width
-    N_weight = dn.N_weight
+    # Numerical setup
     eps = 1E-06
-    factor = 1/N_weight
+    factor = 1
+    N_iter = 100
 
-    N_iter = N_weight*5
-    n_iter_list = range(N_iter)
+    # Errors
     eMin_list = []
     eMax_list = []
+    eAvg_list = []
+
+    # Iterations
+    n_iter_list = range(N_iter)
     for n_iter in n_iter_list:
         error_list = []
-        for x_in in np.arange(0.1,1,0.1):
+        for x_in in np.arange(-1,1,0.05):
             # Current value
-            y_ans  = testFunc(x_in)
-            y_init = dn.in2out(x_in)
+            e_init = errorFunc(dn,testFunc,x_in)
             oldWeights = dn.getWeights()
 
             # Compute Jacobian
-            N_w = dn.N_weight
-            co_J = []
-            for n_w in range(N_w):
+            co_J = np.empty((0,1),dtype=float)
+            for n_w in range(dn.N_weight):
                 newWeights = np.copy(oldWeights)
                 newWeights[n_w] += eps
                 dn.setWeights(newWeights)
-                
-                y_pert = dn.in2out(x_in)
-                dydx = (y_pert-y_init)/eps
-                co_J.append(dydx)
-            co_J1D = np.array(co_J)
-            y_err = np.array(y_ans - y_init)
+                    
+                e_updt = errorFunc(dn,testFunc,x_in)
+                dedx = (e_updt-e_init)/eps
+                co_J = np.append(co_J,dedx)
+            co_J2D = co_J.reshape(1,len(co_J))
+            co_err2D = e_init.reshape(1,1)
 
-            co_J2D = co_J1D.reshape(1,N_w)
-            co_yerr2D = y_err.reshape(1,1)
-
-            co_b2D = (co_J2D.transpose()) @ co_yerr2D
+            co_b2D = -(co_J2D.transpose()) @ co_err2D
             co_a2D = (co_J2D.transpose()) @ co_J2D
             
             # Update globally
             dx2D = np.linalg.lstsq(co_a2D, co_b2D, rcond=None)[0]
-            dx1D = dx2D.reshape(N_w,)
+            dx1D = dx2D.reshape(-1,)
             solWeights = oldWeights+dx1D*factor
             dn.setWeights(solWeights)
 
             # Check error
-            error_list.append(abs(y_err))
+            error_list.append(e_init)
 
         # Iteration status
         eMin_list.append(min(error_list))
-        eMax_list.append(max(error_list))
-        print("Iteration {}, minE={:.2e}, maxE={:.2e}, minW={:.2f}, maxW={:.2f}".format(
-               n_iter,min(error_list),max(error_list),min(oldWeights),max(oldWeights)))
-
+        eMax_list.append(max(error_list))   
+        eAvg_list.append(sum(error_list)/len(error_list))        
+        print("Iteration {}, minE={:.2e}, maxE={:.2e}, avgE={:.2e}".format(
+               n_iter,min(error_list),max(error_list),sum(error_list)/len(error_list)))
+    
     # Status
     print(" ")
     print("===")
-    for n_layer in range(N_layer):
-        for n_width in range(N_width[n_layer]):
-            curStr = "["
-            for curWeight in dn.neurons[n_layer][n_width].getWeights():
-                curStr += "{:.3e}".format(curWeight) + ", "
-            curStr += "]"
-            curStr = curStr.replace(", ]", "]")
+    for n_layer in range(dn.N_layer):
+        for n_width in range(dn.N_width[n_layer]):
+            curWeights = dn.neurons[n_layer][n_width].getWeights()
+            curStr = str(curWeights)
             print("Neuron {}-{}".format(n_layer,n_width) + ": " + curStr)
     print(" ")
         
@@ -88,6 +76,7 @@ if __name__ == '__main__':
     fig, ax = plt.subplots()
     ax.semilogy(n_iter_list,eMin_list,label='Error Min')
     ax.semilogy(n_iter_list,eMax_list,label='Error Max')
+    ax.semilogy(n_iter_list,eAvg_list,label='Error Avg')
     ax.legend()
     plt.xlabel('Iteration')
     plt.ylabel('Error')
