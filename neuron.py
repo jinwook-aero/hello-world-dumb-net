@@ -23,10 +23,10 @@ class neuron():
     #   | val_ins = np.zeros((self.N_leg),dtype=float)
     # -out2in(dNdx_down) // back-propagate sensitivities
     #
-    # Last update: August 19, 2023
+    # Last update: August 20, 2023
     # Author: Jinwook Lee
     #
-    def __init__(self, N_leg, initWeight=np.NaN, actFuncType=2, eps = 1E-10):
+    def __init__(self, N_leg, initWeight=np.NaN, actFuncType=2):
         # Initialization
         self.N_leg   = N_leg
         self.N_weight = N_leg + 1
@@ -36,7 +36,6 @@ class neuron():
         self.actFuncType = actFuncType
 
         # Sensitivities
-        self.eps = eps # Perturbation to compute gradient
         self.dNdx_down = 0 # sensitivity of network output to neuron output
         self.dNdx_leg = np.zeros(N_leg) # sensitivity of network output to each leg input
         self.dNdweight = np.zeros(self.N_weight) # sensitivity of network output to each weight
@@ -54,7 +53,7 @@ class neuron():
     def setWeights(self,newWeights):
         self.weights = newWeights
     
-    def computeActFunct(self,co_sum):
+    def _computeActFunct(self,co_sum):
         if self.actFuncType == -1:
             # No activation function
             co_out = co_sum
@@ -78,25 +77,53 @@ class neuron():
         
         return co_out
     
+    def _computeActGradient(self,co_sum):
+        if self.actFuncType == -1:
+            # No activation function
+            co_out = np.ones(np.size(co_sum))
+
+        elif self.actFuncType == 0:
+            # ReLU
+            co_out = np.ones(np.size(co_sum))
+            i_sel = co_sum<0
+            co_out[i_sel] = 0
+
+        elif self.actFuncType == 1:
+            # Sigmoidal
+            co_exp = np.exp(+co_sum)
+            co_sig = co_exp/(1+co_exp)
+            co_out = co_sig/(1+co_exp)
+
+        elif self.actFuncType == 2:
+            # Swish
+            co_exp = np.exp(+co_sum)
+            co_sig = co_exp/(1+co_exp)
+            co_out = co_sig*(1+co_sum+co_exp)/(1+co_exp)
+
+        else:
+            co_out = np.NaN
+            print("Invalid activation function type: %d" % self.actFuncType)
+        
+        return co_out
+    
     def in2out(self,val_ins):
         self.val_ins = val_ins
         assert len(self.val_ins) == self.N_leg # Input count must match leg count
         self.val_sum = np.dot(self.weights[:-1],self.val_ins) + self.weights[-1]
-        self.val_out = self.computeActFunct(self.val_sum)
+        self.val_out = self._computeActFunct(self.val_sum)
 
         return self.val_out
 
     def out2in(self,dNdx_down):
         ## Back-propagation of network sensitivity
         self.dNdx_down = dNdx_down
-        dydx_neuron = (self.computeActFunct(self.val_sum+self.eps) - \
-                       self.val_out)/(self.eps)
+        dydx_neuron = self._computeActGradient(self.val_sum)
 
-        # Sensitivity of upstream legs
+        # Sensitivity of network output to upstream legs
         dNdx_mid = dNdx_down*dydx_neuron
         self.dNdx_up = dNdx_mid*self.weights[:-1]
 
-        # Weight sensitivity
+        # Sensitivity of network output to weights
         self.dNdweight[:-1] = dNdx_mid*self.val_ins
         self.dNdweight[-1] = dNdx_mid
 

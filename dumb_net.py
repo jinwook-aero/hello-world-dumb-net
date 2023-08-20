@@ -28,7 +28,7 @@ class DumbNet():
     #   | input.weightLearnRate # Weight learning rate
     #   | input.xFocusFrac      # Fraction of test x to focus on per each iteration
     #
-    # Last update: August 19, 2023
+    # Last update: August 20, 2023
     # Author: Jinwook Lee
     #
     def __init__(self,n_layer_dist,initWeight=np.NaN,actFuncType=0,eps=1E-10):
@@ -130,8 +130,8 @@ class DumbNet():
                 e_init = errorFunc(y_ans,y_est)
                 error_list = np.append(error_list,e_init)
             i_sort = np.argsort(error_list)
-            i_sel = i_sort[-int(input.N_x_train*input.xFocusFrac):]
-            x_sel = x_in_list[i_sel]
+            i_frac = i_sort[-int(input.N_x_train*input.xFocusFrac):]
+            x_sel = x_in_list[i_frac]
 
             # Update based on worst x cases
             for x_in in x_sel:
@@ -141,7 +141,9 @@ class DumbNet():
                 y_ans = testFunc(x_in)
                 e_init = errorFunc(y_ans,y_est)
                 if abs(e_init)<input.tol:
-                    continue
+                    # rest of x_in is also within tolerance
+                    # as reverse sorted in error
+                    break 
                 
                 # Sensitivity of error to network output
                 e_pert = errorFunc(y_ans,y_est+self.eps)
@@ -164,22 +166,20 @@ class DumbNet():
                 N_w_sel = int(np.floor(self.N_weight*input.weightTrainFrac))
                 n_w_sel = np.random.choice(n_w_all, N_w_sel, replace=False)  
 
-                # Compute Jacobian
-                oldWeights = self.getWeights()
-                co_J = np.empty((0,1),dtype=float)
-                for n_w in n_w_sel:
-                    co_J = np.append(co_J,dedweights[n_w])
+                # Compute least-square solution
+                co_J = dedweights[n_w_sel]
                 co_J2D = co_J.reshape(1,len(co_J))
                 co_err2D = e_init.reshape(1,1)
-
                 co_b2D = -(co_J2D.transpose()) @ co_err2D
                 co_a2D = (co_J2D.transpose()) @ co_J2D
-                
-                # Update globally
                 dx2D = np.linalg.lstsq(co_a2D, co_b2D, rcond=None)[0]
                 dx1D = dx2D.reshape(-1,)
+                
+                # Update weights
                 dWeights = np.zeros(self.N_weight)
                 dWeights[n_w_sel] = dx1D*input.weightLearnRate
+
+                oldWeights = self.getWeights()
                 solWeights = oldWeights+dWeights
                 self.setWeights(solWeights)
 
