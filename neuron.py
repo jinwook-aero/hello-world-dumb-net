@@ -21,18 +21,32 @@ class neuron():
     #   | newWeights = np.zeros((self.N_leg+1),dtype=float)
     # -in2out(val_ins) // compute output of network
     #   | val_ins = np.zeros((self.N_leg),dtype=float)
-    def __init__(self, N_leg, initWeight=np.NaN, actFuncType=2):
+    # -out2in(dNdx_down) // back-propagate sensitivities
+    #
+    # Last update: August 19, 2023
+    # Author: Jinwook Lee
+    #
+    def __init__(self, N_leg, initWeight=np.NaN, actFuncType=2, eps = 1E-10):
+        # Initialization
         self.N_leg   = N_leg
+        self.N_weight = N_leg + 1
         self.val_ins = np.zeros(N_leg)
+        self.val_sum = 0 # Weighted sum of input
         self.val_out = 0
         self.actFuncType = actFuncType
 
+        # Sensitivities
+        self.eps = eps # Perturbation to compute gradient
+        self.dNdx_down = 0 # sensitivity of network output to neuron output
+        self.dNdx_leg = np.zeros(N_leg) # sensitivity of network output to each leg input
+        self.dNdweight = np.zeros(self.N_weight) # sensitivity of network output to each weight
+
         # Weights
-        self.weights = np.zeros((self.N_leg+1),dtype=float)
+        self.weights = np.zeros((self.N_weight),dtype=float)
         if np.isnan(initWeight):
-            self.weights = 2*np.random.rand(N_leg+1)-1 # rand [-1, 1]
+            self.weights = 2*np.random.rand(self.N_weight)-1 # rand [-1, 1]
         else:
-            self.weights = np.ones(N_leg+1)*initWeight
+            self.weights = np.ones(self.N_weight)*initWeight
     
     def getWeights(self):
         return self.weights
@@ -40,30 +54,51 @@ class neuron():
     def setWeights(self,newWeights):
         self.weights = newWeights
     
-    def in2out(self,val_ins):
-        self.val_ins = val_ins
-        assert len(self.val_ins) == self.N_leg # Input count must match leg count
-        co_sum = np.dot(self.weights[:-1],self.val_ins) + self.weights[-1]
+    def computeActFunct(self,co_sum):
         if self.actFuncType == -1:
             # No activation function
-            self.val_out = co_sum
+            co_out = co_sum
 
         elif self.actFuncType == 0:
             # ReLU
-            self.val_out = max(co_sum,0)
+            co_out = max(co_sum,0)
 
         elif self.actFuncType == 1:
             # Sigmoidal
-            self.val_out = 1/(1+np.exp(-co_sum))
+            co_out = 1/(1+np.exp(-co_sum))
 
         elif self.actFuncType == 2:
             # Swish
             sig = 1/(1+np.exp(-co_sum))
-            self.val_out = co_sum * sig
+            co_out = co_sum * sig
 
         else:
-            self.val_out = np.NaN
+            co_out = np.NaN
             print("Invalid activation function type: %d" % self.actFuncType)
+        
+        return co_out
+    
+    def in2out(self,val_ins):
+        self.val_ins = val_ins
+        assert len(self.val_ins) == self.N_leg # Input count must match leg count
+        self.val_sum = np.dot(self.weights[:-1],self.val_ins) + self.weights[-1]
+        self.val_out = self.computeActFunct(self.val_sum)
 
         return self.val_out
+
+    def out2in(self,dNdx_down):
+        ## Back-propagation of network sensitivity
+        self.dNdx_down = dNdx_down
+        dydx_neuron = (self.computeActFunct(self.val_sum+self.eps) - \
+                       self.val_out)/(self.eps)
+
+        # Sensitivity of upstream legs
+        dNdx_mid = dNdx_down*dydx_neuron
+        self.dNdx_up = dNdx_mid*self.weights[:-1]
+
+        # Weight sensitivity
+        self.dNdweight[:-1] = dNdx_mid*self.val_ins
+        self.dNdweight[-1] = dNdx_mid
+
+
 

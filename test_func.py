@@ -1,5 +1,5 @@
 import numpy as np
-def testFunc(x_in,functionType = 5):
+def testFunc(x_in,functionType = 2):
     ## Target test function to which the network is trained
     # functionType
     # 1: Linear
@@ -8,6 +8,10 @@ def testFunc(x_in,functionType = 5):
     # 4: Absolute
     # 5: Square wave
     # 6: Piecewise linear
+    #
+    # Last update: August 19, 2023
+    # Author: Jinwook Lee
+    #
 
     # Definition of each function
     if functionType == 1:

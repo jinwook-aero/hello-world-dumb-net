@@ -14,6 +14,8 @@ class DumbNet():
     # Functions:
     # - in2out(x_in) // Computes output of network
     # - getWeights
+    # - get_dydx_weights // Sensitivity of network output to weights
+    # - setWeights
     # - train(input,testFunc,errorFunc)
     #   | input.eps # perturbation to compute gradient
     #   | input.tol # Acceptable range within which training is skipped
@@ -25,7 +27,11 @@ class DumbNet():
     #   | input.weightTrainFrac # Fraction of weight to train per each iteration
     #   | input.weightLearnRate # Weight learning rate
     #   | input.xFocusFrac      # Fraction of test x to focus on per each iteration
-    def __init__(self,n_layer_dist,initWeight=np.NaN,actFuncType=0):
+    #
+    # Last update: August 19, 2023
+    # Author: Jinwook Lee
+    #
+    def __init__(self,n_layer_dist,initWeight=np.NaN,actFuncType=0,eps=1E-10):
         # Layer definition check
         assert n_layer_dist[-1] == 1 # Last layer is neuron without activation
         assert np.all(n_layer_dist>0) # All layer size should be positive
@@ -35,6 +41,7 @@ class DumbNet():
         self.N_layer = len(self.N_width)
 
         self.actFuncType = actFuncType
+        self.eps = eps # Perturbation to compute sensitivity
         self._createNet(initWeight,actFuncType) # create self.neurons
 
         self.N_neuron = sum(self.N_width) # Total count of nuerons
@@ -71,6 +78,15 @@ class DumbNet():
                 cur_neuron = self.neurons[n_layer][n_width]
                 weights = np.append(weights,cur_neuron.getWeights(),axis=0)
         return weights
+    
+    def get_dNdweights(self):
+        # Network sensitivity to weights
+        dNdweights = np.empty((0),dtype=float)
+        for n_layer in range(self.N_layer):            
+            for n_width in range(self.N_width[n_layer]):
+                cur_neuron = self.neurons[n_layer][n_width]
+                dNdweights = np.append(dNdweights,cur_neuron.dNdweight,axis=0)
+        return dNdweights
     
     def setWeights(self,newWeights):
         # Neuron weights
@@ -109,7 +125,9 @@ class DumbNet():
             for x_in in x_in_list:
                 # Current error
                 # - Skip if already within tolerance
-                e_init = errorFunc(self,testFunc,x_in)
+                y_est = self.in2out(x_in)
+                y_ans = testFunc(x_in)
+                e_init = errorFunc(y_ans,y_est)
                 error_list = np.append(error_list,e_init)
             i_sort = np.argsort(error_list)
             i_sel = i_sort[-int(input.N_x_train*input.xFocusFrac):]
@@ -117,12 +135,30 @@ class DumbNet():
 
             # Update based on worst x cases
             for x_in in x_sel:
-                # Current error
+                # Forward propagate to compute error
                 # - Skip if already within tolerance
-                e_init = errorFunc(self,testFunc,x_in)
+                y_est = self.in2out(x_in)
+                y_ans = testFunc(x_in)
+                e_init = errorFunc(y_ans,y_est)
                 if abs(e_init)<input.tol:
                     continue
                 
+                # Sensitivity of error to network output
+                e_pert = errorFunc(y_ans,y_est+self.eps)
+                dedout = (e_pert-e_init)/(self.eps)
+
+                # Back propagate to compute error sensitivity to weights
+                for n_layer in reversed(range(self.N_layer)):
+                    for n_width in range(self.N_width[n_layer]):
+                        if n_layer == self.N_layer-1: # Last layer
+                            dNdx_out = 1
+                        else:
+                            dNdx_out = 0
+                            for n_width2 in range(self.N_width[n_layer+1]):
+                                dNdx_out += self.neurons[n_layer+1][n_width2].dNdx_up[n_width]
+                        self.neurons[n_layer][n_width].out2in(dNdx_out)
+                dedweights = self.get_dNdweights()*dedout
+
                 # Random selection of weights to train
                 n_w_all = np.arange(self.N_weight)
                 N_w_sel = int(np.floor(self.N_weight*input.weightTrainFrac))
@@ -132,13 +168,7 @@ class DumbNet():
                 oldWeights = self.getWeights()
                 co_J = np.empty((0,1),dtype=float)
                 for n_w in n_w_sel:
-                    newWeights = np.copy(oldWeights)
-                    newWeights[n_w] += input.eps
-                    self.setWeights(newWeights)
-                        
-                    e_updt = errorFunc(self,testFunc,x_in)
-                    dedx = (e_updt-e_init)/input.eps
-                    co_J = np.append(co_J,dedx)
+                    co_J = np.append(co_J,dedweights[n_w])
                 co_J2D = co_J.reshape(1,len(co_J))
                 co_err2D = e_init.reshape(1,1)
 

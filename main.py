@@ -8,11 +8,15 @@ from error_func import errorFunc
 # Train network that takes single input for single output
 # Update default functionType in test_func.py to aim for different targets
 # Adjust Setup class parameters for network tuning
+#
+# Last update: August 19, 2023
+# Author: Jinwook Lee
+#
 
 class Setup():
     ## Class to control setup
     def __init__(self):
-        # Basics&
+        # Basics
         self.eps = 1E-06 # infinitesimal perturbation to compute gradient
         self.conv = 0.1 # Convergence threshold
         self.tol = self.conv*0.3 # Acceptable range of error to skip updating
