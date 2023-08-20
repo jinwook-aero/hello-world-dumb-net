@@ -1,5 +1,5 @@
 import numpy as np
-def testFunc(x_in,functionType = 2):
+def testFunc(x_in,functionType = 5):
     ## Target test function to which the network is trained
     # functionType
     # 1: Linear
@@ -32,7 +32,7 @@ def testFunc(x_in,functionType = 2):
         y_out[i_sel0] = -1
         y_out[i_sel1] = +1
         y_out[i_sel2] = +1
-        y_out[i_sel3] = -1
+        y_out[i_sel3] = 0
 
     elif functionType == 6:
         x_in = np.array(x_in,dtype=float)

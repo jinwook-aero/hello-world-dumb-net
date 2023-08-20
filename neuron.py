@@ -13,6 +13,7 @@ class neuron():
     #   // -1: No activation function
     #   //  0: Rectified linear unit
     #   //  1: Sigmoidal
+    #   //  2: Swish
     #
     # Functions:
     # - getWeights // get weights of all neurons
@@ -20,7 +21,7 @@ class neuron():
     #   | newWeights = np.zeros((self.N_leg+1),dtype=float)
     # -in2out(val_ins) // compute output of network
     #   | val_ins = np.zeros((self.N_leg),dtype=float)
-    def __init__(self, N_leg, initWeight=np.NaN, actFuncType=0):
+    def __init__(self, N_leg, initWeight=np.NaN, actFuncType=2):
         self.N_leg   = N_leg
         self.val_ins = np.zeros(N_leg)
         self.val_out = 0
@@ -54,6 +55,11 @@ class neuron():
         elif self.actFuncType == 1:
             # Sigmoidal
             self.val_out = 1/(1+np.exp(-co_sum))
+
+        elif self.actFuncType == 2:
+            # Swish
+            sig = 1/(1+np.exp(-co_sum))
+            self.val_out = co_sum * sig
 
         else:
             self.val_out = np.NaN

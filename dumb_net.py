@@ -16,12 +16,15 @@ class DumbNet():
     # - getWeights
     # - train(input,testFunc,errorFunc)
     #   | input.eps # perturbation to compute gradient
-    #   | input.tol # Acceptable range within which training is stopped
-    #   | input.factor # Weight learning rate
+    #   | input.tol # Acceptable range within which training is skipped
+    #   | input.conv # Convergence criterion
     #   | input.N_iter # Iteration count
     #   | input.x_train_min # Train x range, min
     #   | input.x_train_max # Train x range, max
     #   | input.N_x_train # Train x count
+    #   | input.weightTrainFrac # Fraction of weight to train per each iteration
+    #   | input.weightLearnRate # Weight learning rate
+    #   | input.xFocusFrac      # Fraction of test x to focus on per each iteration
     def __init__(self,n_layer_dist,initWeight=np.NaN,actFuncType=0):
         # Layer definition check
         assert n_layer_dist[-1] == 1 # Last layer is neuron without activation
@@ -40,6 +43,7 @@ class DumbNet():
             for n_width in range(self.N_width[n_layer]):
                 cur_neuron = self.neurons[n_layer][n_width]
                 self.N_weight += len(cur_neuron.getWeights())
+        print("Built network with {} neurons and {} weights".format(self.N_neuron,self.N_weight))
         
         # Train status
         self.isTrained = False
@@ -100,21 +104,34 @@ class DumbNet():
         eMax_list = []
         eAvg_list = []
         for n_iter in n_iter_list:
-            # Update for each x in random order
-            error_list = []
-            np.random.shuffle(x_in_list)
+            # Selected x list with worst error
+            error_list = np.empty((0),dtype=float)
             for x_in in x_in_list:
                 # Current error
                 # - Skip if already within tolerance
                 e_init = errorFunc(self,testFunc,x_in)
-                error_list.append(e_init)
+                error_list = np.append(error_list,e_init)
+            i_sort = np.argsort(error_list)
+            i_sel = i_sort[-int(input.N_x_train*input.xFocusFrac):]
+            x_sel = x_in_list[i_sel]
+
+            # Update based on worst x cases
+            for x_in in x_sel:
+                # Current error
+                # - Skip if already within tolerance
+                e_init = errorFunc(self,testFunc,x_in)
                 if abs(e_init)<input.tol:
                     continue
+                
+                # Random selection of weights to train
+                n_w_all = np.arange(self.N_weight)
+                N_w_sel = int(np.floor(self.N_weight*input.weightTrainFrac))
+                n_w_sel = np.random.choice(n_w_all, N_w_sel, replace=False)  
 
                 # Compute Jacobian
                 oldWeights = self.getWeights()
                 co_J = np.empty((0,1),dtype=float)
-                for n_w in range(self.N_weight):
+                for n_w in n_w_sel:
                     newWeights = np.copy(oldWeights)
                     newWeights[n_w] += input.eps
                     self.setWeights(newWeights)
@@ -131,7 +148,9 @@ class DumbNet():
                 # Update globally
                 dx2D = np.linalg.lstsq(co_a2D, co_b2D, rcond=None)[0]
                 dx1D = dx2D.reshape(-1,)
-                solWeights = oldWeights+dx1D*input.factor
+                dWeights = np.zeros(self.N_weight)
+                dWeights[n_w_sel] = dx1D*input.weightLearnRate
+                solWeights = oldWeights+dWeights
                 self.setWeights(solWeights)
 
             ## Iteration status
@@ -151,15 +170,15 @@ class DumbNet():
             else:
                 if eAvg_list[n_iter]>=eAvg_list[n_iter-1]: # Not converging
                     n_stagnant += 1
-            if n_stagnant > input.N_iter*0.1:
+            if n_stagnant > input.N_iter*0.5:
                 break
 
-            ## Early breakout
-            if eAvg_list[n_iter] < input.tol:
+            ## Convergence check
+            if eAvg_list[n_iter] < input.conv:
                 break
         
         # Training quality
-        if eAvg_list[-1]<input.tol:
+        if eAvg_list[-1]<input.conv:
             self.isTrained = True
         else:
             self.isTrained = False
