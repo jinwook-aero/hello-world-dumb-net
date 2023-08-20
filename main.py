@@ -20,18 +20,17 @@ class Setup():
         self.eps = 1E-06 # infinitesimal perturbation to compute gradient
         self.conv = 0.05 # Convergence threshold
         self.tol = self.conv*0.3 # Acceptable range of error to skip updating
-        self.N_iter = 3000 # Iteration count
+        self.N_iter = 30000 # Iteration count
         self.N_trial = 5 # Trial attempt
         self.weightTrainFrac = 0.3 # Fraction of weight to train per each iteration
-        self.xFocusFrac = 0.3 # Fraction of test x to focus on per each iteration
         self.weightLearnRate = 0.1  # Weight learning rate
 
-        # Train range
+        # Train set
         self.x_train_min = -1
         self.x_train_max = +1
         self.N_x_train = 51
 
-        # Test range
+        # Test set
         self.x_test_min = -1
         self.x_test_max = +1
         self.N_x_test = 501

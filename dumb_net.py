@@ -27,7 +27,6 @@ class DumbNet():
     #   | input.N_x_train # Train x count
     #   | input.weightTrainFrac # Fraction of weight to train per each iteration
     #   | input.weightLearnRate # Weight learning rate
-    #   | input.xFocusFrac      # Fraction of test x to focus on per each iteration
     #
     # Last update: August 20, 2023
     # Author: Jinwook Lee
@@ -125,73 +124,66 @@ class DumbNet():
         dt_leastsquare = 0
         dt_sol = 0
         for n_iter in n_iter_list:
-            # Update based on randomly selected x
-            x_sel = np.random.choice(x_in_list, int(input.N_x_train*input.xFocusFrac), replace=False) 
-            error_list = np.empty((0),dtype=float)
-            for x_in in x_sel:
-                # Forward propagate to compute error
-                # - Skip if already within tolerance
-                cur_time1 = time.perf_counter()
-                y_est = self.in2out(x_in)
-                y_ans = testFunc(x_in)
-                e_init = errorFunc(y_ans,y_est)
-                error_list = np.append(error_list,e_init)
-                if abs(e_init)<input.tol:
-                    # rest of x_in is also within tolerance
-                    # as reverse sorted in error
-                    break 
-                
-                # Sensitivity of error to network output
-                e_pert = errorFunc(y_ans,y_est+self.eps)
-                dedout = (e_pert-e_init)/(self.eps)
-                cur_time2 = time.perf_counter()
-                dt_forward += cur_time2 - cur_time1
+            # Forward propagate to compute error based on randomly selected x
+            # - Skip if already within tolerance
+            cur_time1 = time.perf_counter()
+            x_sel = np.random.choice(x_in_list,1,replace=False)
+            x_in = x_sel[0]
+            y_est = self.in2out(x_in)
+            y_ans = testFunc(x_in)
+            e_init = errorFunc(y_ans,y_est)
+            
+            # Sensitivity of error to network output
+            e_pert = errorFunc(y_ans,y_est+self.eps)
+            dedout = (e_pert-e_init)/(self.eps)
+            cur_time2 = time.perf_counter()
+            dt_forward += cur_time2 - cur_time1
 
-                # Back propagate to compute error sensitivity to weights
-                cur_time1 = time.perf_counter()
-                for n_layer in reversed(range(self.N_layer)):
-                    for n_width in range(self.N_width[n_layer]):
-                        if n_layer == self.N_layer-1: # Last layer
-                            dNdx_out = 1
-                        else:
-                            dNdx_out = 0
-                            for n_width2 in range(self.N_width[n_layer+1]):
-                                dNdx_out += self.neurons[n_layer+1][n_width2].dNdx_up[n_width]
-                        self.neurons[n_layer][n_width].out2in(dNdx_out)
-                dedweights = self.get_dNdweights()*dedout
-                cur_time2 = time.perf_counter()
-                dt_backward += cur_time2- cur_time1
+            # Back propagate to compute error sensitivity to weights
+            cur_time1 = time.perf_counter()
+            for n_layer in reversed(range(self.N_layer)):
+                for n_width in range(self.N_width[n_layer]):
+                    if n_layer == self.N_layer-1: # Last layer
+                        dNdx_out = 1
+                    else:
+                        dNdx_out = 0
+                        for n_width2 in range(self.N_width[n_layer+1]):
+                            dNdx_out += self.neurons[n_layer+1][n_width2].dNdx_up[n_width]
+                    self.neurons[n_layer][n_width].out2in(dNdx_out)
+            dedweights = self.get_dNdweights()*dedout
+            cur_time2 = time.perf_counter()
+            dt_backward += cur_time2- cur_time1
 
-                # Random selection of weights to train
-                cur_time1 = time.perf_counter()
-                n_w_all = np.arange(self.N_weight)
-                N_w_sel = int(np.floor(self.N_weight*input.weightTrainFrac))
-                n_w_sel = np.random.choice(n_w_all, N_w_sel, replace=False)  
+            # Random selection of weights to train
+            cur_time1 = time.perf_counter()
+            n_w_all = np.arange(self.N_weight)
+            N_w_sel = int(np.floor(self.N_weight*input.weightTrainFrac))
+            n_w_sel = np.random.choice(n_w_all, N_w_sel, replace=False)  
 
-                # Compute least-square solution
-                co_J = dedweights[n_w_sel]
-                co_J2D = co_J.reshape(1,len(co_J))
-                co_err2D = e_init.reshape(1,1)
-                co_b2D = -(co_J2D.transpose()) @ co_err2D
-                co_a2D = (co_J2D.transpose()) @ co_J2D
-                cur_time_lq1 = time.perf_counter()
-                dx2D = np.linalg.lstsq(co_a2D, co_b2D, rcond=None)[0]
-                cur_time_lq2 = time.perf_counter()
-                dx1D = dx2D.reshape(-1,)
-                
-                # Update weights
-                dWeights = np.zeros(self.N_weight)
-                dWeights[n_w_sel] = dx1D*input.weightLearnRate
+            # Compute least-square solution
+            co_J = dedweights[n_w_sel]
+            co_J2D = co_J.reshape(1,len(co_J))
+            co_err2D = e_init.reshape(1,1)
+            co_b2D = -(co_J2D.transpose()) @ co_err2D
+            co_a2D = (co_J2D.transpose()) @ co_J2D
+            cur_time_lq1 = time.perf_counter()
+            dx2D = np.linalg.lstsq(co_a2D, co_b2D, rcond=None)[0]
+            cur_time_lq2 = time.perf_counter()
+            dx1D = dx2D.reshape(-1,)
+            
+            # Update weights
+            dWeights = np.zeros(self.N_weight)
+            dWeights[n_w_sel] = dx1D*input.weightLearnRate
 
-                oldWeights = self.getWeights()
-                solWeights = oldWeights+dWeights
-                self.setWeights(solWeights)
-                cur_time2 = time.perf_counter()
-                dt_leastsquare += cur_time2- cur_time1
-                dt_sol += cur_time_lq2- cur_time_lq1
+            oldWeights = self.getWeights()
+            solWeights = oldWeights+dWeights
+            self.setWeights(solWeights)
+            cur_time2 = time.perf_counter()
+            dt_leastsquare += cur_time2- cur_time1
+            dt_sol += cur_time_lq2- cur_time_lq1
 
             ## Iteration status
-            if np.remainder(n_iter,20)==0:
+            if np.remainder(n_iter,200)==0:
                 error_list = np.empty((0),dtype=float)
                 for x_in in x_in_list:
                     # Forward propagate to compute error
@@ -208,7 +200,7 @@ class DumbNet():
                 print("Iteration {}, minE={:.2e}, maxE={:.2e}, avgE={:.2e}".format(
                     n_iter,min(error_list),max(error_list),sum(error_list)/len(error_list)))
                 
-                if n_iter !=0 and np.remainder(n_iter,20*5)==0:
+                if n_iter !=0 and np.remainder(n_iter,200*5)==0:
                     dt_total = dt_forward+dt_backward+dt_leastsquare
                     tF_forw = dt_forward/dt_total*100
                     tF_back = dt_backward/dt_total*100
