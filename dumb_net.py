@@ -1,4 +1,5 @@
 import numpy as np
+import time
 from neuron import neuron
 
 class DumbNet():
@@ -116,30 +117,25 @@ class DumbNet():
         x_in_list = np.linspace(input.x_train_min,input.x_train_max,input.N_x_train)
 
         # Iterations
-        eMin_list = []
-        eMax_list = []
-        eAvg_list = []
+        eMin_list = np.full([input.N_iter], np.nan)
+        eMax_list = np.full([input.N_iter], np.nan)
+        eAvg_list = np.full([input.N_iter], np.nan)
+        dt_forward = 0
+        dt_backward = 0
+        dt_leastsquare = 0
+        dt_sol = 0
         for n_iter in n_iter_list:
-            # Selected x list with worst error
+            # Update based on randomly selected x
+            x_sel = np.random.choice(x_in_list, int(input.N_x_train*input.xFocusFrac), replace=False) 
             error_list = np.empty((0),dtype=float)
-            for x_in in x_in_list:
-                # Current error
+            for x_in in x_sel:
+                # Forward propagate to compute error
                 # - Skip if already within tolerance
+                cur_time1 = time.perf_counter()
                 y_est = self.in2out(x_in)
                 y_ans = testFunc(x_in)
                 e_init = errorFunc(y_ans,y_est)
                 error_list = np.append(error_list,e_init)
-            i_sort = np.argsort(error_list)
-            i_frac = i_sort[-int(input.N_x_train*input.xFocusFrac):]
-            x_sel = x_in_list[i_frac]
-
-            # Update based on worst x cases
-            for x_in in x_sel:
-                # Forward propagate to compute error
-                # - Skip if already within tolerance
-                y_est = self.in2out(x_in)
-                y_ans = testFunc(x_in)
-                e_init = errorFunc(y_ans,y_est)
                 if abs(e_init)<input.tol:
                     # rest of x_in is also within tolerance
                     # as reverse sorted in error
@@ -148,8 +144,11 @@ class DumbNet():
                 # Sensitivity of error to network output
                 e_pert = errorFunc(y_ans,y_est+self.eps)
                 dedout = (e_pert-e_init)/(self.eps)
+                cur_time2 = time.perf_counter()
+                dt_forward += cur_time2 - cur_time1
 
                 # Back propagate to compute error sensitivity to weights
+                cur_time1 = time.perf_counter()
                 for n_layer in reversed(range(self.N_layer)):
                     for n_width in range(self.N_width[n_layer]):
                         if n_layer == self.N_layer-1: # Last layer
@@ -160,8 +159,11 @@ class DumbNet():
                                 dNdx_out += self.neurons[n_layer+1][n_width2].dNdx_up[n_width]
                         self.neurons[n_layer][n_width].out2in(dNdx_out)
                 dedweights = self.get_dNdweights()*dedout
+                cur_time2 = time.perf_counter()
+                dt_backward += cur_time2- cur_time1
 
                 # Random selection of weights to train
+                cur_time1 = time.perf_counter()
                 n_w_all = np.arange(self.N_weight)
                 N_w_sel = int(np.floor(self.N_weight*input.weightTrainFrac))
                 n_w_sel = np.random.choice(n_w_all, N_w_sel, replace=False)  
@@ -172,7 +174,9 @@ class DumbNet():
                 co_err2D = e_init.reshape(1,1)
                 co_b2D = -(co_J2D.transpose()) @ co_err2D
                 co_a2D = (co_J2D.transpose()) @ co_J2D
+                cur_time_lq1 = time.perf_counter()
                 dx2D = np.linalg.lstsq(co_a2D, co_b2D, rcond=None)[0]
+                cur_time_lq2 = time.perf_counter()
                 dx1D = dx2D.reshape(-1,)
                 
                 # Update weights
@@ -182,33 +186,55 @@ class DumbNet():
                 oldWeights = self.getWeights()
                 solWeights = oldWeights+dWeights
                 self.setWeights(solWeights)
+                cur_time2 = time.perf_counter()
+                dt_leastsquare += cur_time2- cur_time1
+                dt_sol += cur_time_lq2- cur_time_lq1
 
             ## Iteration status
-            # Display
-            eMin_list.append(min(error_list))
-            eMax_list.append(max(error_list))   
-            eAvg_list.append(sum(error_list)/len(error_list))        
-            print("Iteration {}, minE={:.2e}, maxE={:.2e}, avgE={:.2e}".format(
-                n_iter,min(error_list),max(error_list),sum(error_list)/len(error_list)))
-            
-            ## Stagnation check
-            # Breakout if not converging
-            # for more than 10% of total iteration
-            if n_iter == 0:
-                eAvg0 = eAvg_list[0]
-                n_stagnant = 0
-            else:
-                if eAvg_list[n_iter]>=eAvg_list[n_iter-1]: # Not converging
-                    n_stagnant += 1
-            if n_stagnant > input.N_iter*0.5:
-                break
+            if np.remainder(n_iter,20)==0:
+                error_list = np.empty((0),dtype=float)
+                for x_in in x_in_list:
+                    # Forward propagate to compute error
+                    # - Skip if already within tolerance
+                    y_est = self.in2out(x_in)
+                    y_ans = testFunc(x_in)
+                    e_init = errorFunc(y_ans,y_est)
+                    error_list = np.append(error_list,e_init)
+
+                # Display
+                eMin_list[n_iter] = min(error_list)
+                eMax_list[n_iter] = max(error_list)
+                eAvg_list[n_iter] = sum(error_list)/len(error_list) 
+                print("Iteration {}, minE={:.2e}, maxE={:.2e}, avgE={:.2e}".format(
+                    n_iter,min(error_list),max(error_list),sum(error_list)/len(error_list)))
+                
+                if n_iter !=0 and np.remainder(n_iter,20*5)==0:
+                    dt_total = dt_forward+dt_backward+dt_leastsquare
+                    tF_forw = dt_forward/dt_total*100
+                    tF_back = dt_backward/dt_total*100
+                    tF_lq = dt_leastsquare/dt_total*100
+                    tF_sol = dt_sol/dt_total*100
+                    print("\tFraction: Forw={:.2e}, Back={:.2e}, LQ={:.2e}, Sol={:.2e}".format(
+                           tF_forw,tF_back,tF_lq,tF_sol))
+                
+                ## Stagnation check
+                # Breakout if not converging
+                # for more than 10% of total iteration
+                if n_iter == 0:
+                    eAvg0 = eAvg_list[n_iter]
+                    n_stagnant = 0
+                else:
+                    if eAvg_list[n_iter]>=eAvg_list[n_iter-1]: # Not converging
+                        n_stagnant += 1
+                if n_stagnant > input.N_iter*0.5:
+                    break
 
             ## Convergence check
             if eAvg_list[n_iter] < input.conv:
                 break
         
         # Training quality
-        if eAvg_list[-1]<input.conv:
+        if eAvg_list[n_iter]<input.conv:
             self.isTrained = True
         else:
             self.isTrained = False

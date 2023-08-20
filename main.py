@@ -18,13 +18,13 @@ class Setup():
     def __init__(self):
         # Basics
         self.eps = 1E-06 # infinitesimal perturbation to compute gradient
-        self.conv = 0.03 # Convergence threshold
+        self.conv = 0.05 # Convergence threshold
         self.tol = self.conv*0.3 # Acceptable range of error to skip updating
         self.N_iter = 3000 # Iteration count
         self.N_trial = 5 # Trial attempt
         self.weightTrainFrac = 0.3 # Fraction of weight to train per each iteration
         self.xFocusFrac = 0.3 # Fraction of test x to focus on per each iteration
-        self.weightLearnRate = 0.3  # Weight learning rate
+        self.weightLearnRate = 0.1  # Weight learning rate
 
         # Train range
         self.x_train_min = -1
@@ -38,7 +38,7 @@ class Setup():
 
         # Layer distribution
         # - Must end with 1 for the last neuron without activation function
-        self.n_layer_dist = np.array([9,9,9,1])
+        self.n_layer_dist = np.array([10,10,10,1])
 
 if __name__ == '__main__':
     ## Initialize

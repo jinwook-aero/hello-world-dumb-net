@@ -35,7 +35,7 @@ def testFunc(x_in,functionType = 2):
         y_out = np.zeros(np.size(x_in),dtype=float)
         y_out[i_sel0] = -1
         y_out[i_sel1] = +1
-        y_out[i_sel2] = +1
+        y_out[i_sel2] = -1
         y_out[i_sel3] = 0
 
     elif functionType == 6:
