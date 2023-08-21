@@ -4,13 +4,12 @@ from neuron import neuron
 import numba as nb
 
 class DumbNet():
-    ## Dumb network that takes single input to set single output
+    ## Dumb network that takes vector input to set vector output
     # Network established based on user defined list
     # Provides simple interface to get and set weights for all neurons
     #
     # Input: 
-    # - n_layer_dist = np.array([a,b,c,...,d,1])
-    #   | Must end with 1 (last layer to sum results)
+    # - n_layer_dist = np.array([N_in,a,b,c,...,d,N_out])
     #   | Each layer should not be zero
     #
     # Functions:
@@ -26,19 +25,21 @@ class DumbNet():
     #   | input.x_train_min # Train x range, min
     #   | input.x_train_max # Train x range, max
     #   | input.N_x_train # Train x count
+    #   | input.N_x_test # Test x count
     #   | input.weightTrainFrac # Fraction of weight to train per each iteration
     #   | input.weightLearnRate # Weight learning rate
     #
-    # Last update: August 20, 2023
+    # Last update: August 21, 2023
     # Author: Jinwook Lee
     #
     def __init__(self,n_layer_dist,initWeight=np.NaN,actFuncType=0,eps=1E-10):
-        # Layer definition check
-        assert n_layer_dist[-1] == 1 # Last layer is neuron without activation
+        # Layer size check
         assert np.all(n_layer_dist>0) # All layer size should be positive
 
         # Initialization
         self.N_width = n_layer_dist # self.N_width[n_layer] width of n_layer
+        self.N_first = n_layer_dist[0]
+        self.N_last = n_layer_dist[-1]
         self.N_layer = len(self.N_width)
 
         self.actFuncType = actFuncType
@@ -59,14 +60,17 @@ class DumbNet():
     def in2out(self,x_in):
         for n_layer in range(self.N_layer):
             # Input
-            if n_layer == 0:
-                cur_in = np.array([x_in])
-            else:
-                cur_in = np.array(cur_out)
+            if n_layer != 0:
+                cur_in = cur_out
+            #else:
+            #    to be defined based on x_in[n_width]
 
-            # Passing neurons
+            # Compute signal through all neurons on n_layer'th layer
             cur_out = []
-            for neuron in self.neurons[n_layer]:
+            for n_width in range(self.N_width[n_layer]):
+                if n_layer == 0:
+                    cur_in = np.array([x_in[n_width]])
+                neuron = self.neurons[n_layer][n_width]
                 cur_out.append(neuron.in2out(cur_in))
             cur_out = np.array(cur_out)
         return cur_out
@@ -82,7 +86,7 @@ class DumbNet():
     
     def get_dNdweights(self):
         # Network sensitivity to weights
-        dNdweights = np.empty((0),dtype=float)
+        dNdweights = np.empty((0,self.N_last),dtype=float)
         for n_layer in range(self.N_layer):            
             for n_width in range(self.N_width[n_layer]):
                 cur_neuron = self.neurons[n_layer][n_width]
@@ -96,7 +100,7 @@ class DumbNet():
             for n_width in range(self.N_width[n_layer]):
                 cur_neuron = self.neurons[n_layer][n_width]
                 i0 = iEnd+1
-                iEnd += (cur_neuron.N_leg + 1) # count of weights on this neuron
+                iEnd += (cur_neuron.N_in + 1) # count of weights on this neuron
                 cur_neuron.setWeights(newWeights[i0:iEnd+1])
     
     def _createNet(self,initWeight,actFuncType):
@@ -104,17 +108,23 @@ class DumbNet():
         for n_layer in range(self.N_layer):
             self.neurons[n_layer] = np.ndarray((self.N_width[n_layer],),dtype=neuron)
             
-            N_leg = 1 if n_layer == 0 else self.N_width[n_layer-1]
+            N_in = 1 if n_layer == 0 else self.N_width[n_layer-1]
             if n_layer == self.N_layer-1: # Last layer is always neuron without activation
-                self.neurons[n_layer][0] = neuron(N_leg,initWeight,-1)
+                curActFuncType = -1
             else:
-                for n_width in range(self.N_width[n_layer]):
-                    self.neurons[n_layer][n_width] = neuron(N_leg,initWeight,actFuncType)
+                curActFuncType = actFuncType
+            for n_width in range(self.N_width[n_layer]):
+                self.neurons[n_layer][n_width] = neuron(N_in,self.N_last,initWeight,curActFuncType)
  
     def train(self,input,testFunc,errorFunc):
         # Inputs
         n_iter_list = range(input.N_iter)
-        x_in_list = np.linspace(input.x_train_min,input.x_train_max,input.N_x_train)
+        x_in_list = []
+        for n_order_x in range(input.N_order_x):
+            x_in_list.append(np.linspace(\
+                                input.x_train_min[n_order_x],\
+                                input.x_train_max[n_order_x],\
+                                input.N_x_train))
 
         # Iterations
         eMin_list = np.full([input.N_iter], np.nan)
@@ -127,15 +137,21 @@ class DumbNet():
             # Forward propagate to compute error based on randomly selected x
             # - Skip if already within tolerance
             cur_time1 = time.perf_counter()
-            x_sel = np.random.choice(x_in_list,1,replace=False)
-            x_in = x_sel[0]
+            x_in = np.zeros(input.N_order_x)
+            for n_order_x in range(input.N_order_x):
+                i_sel = np.random.randint(0, len(x_in_list[n_order_x]))
+                x_in[n_order_x] = x_in_list[n_order_x][i_sel]
             y_est = self.in2out(x_in)
-            y_ans = testFunc(x_in)
+            y_ans = testFunc(x_in,self.N_first,self.N_last)
             e_init = errorFunc(y_ans,y_est)
             
             # Sensitivity of error to network output
-            e_pert = errorFunc(y_ans,y_est+self.eps)
-            dedout = (e_pert-e_init)/(self.eps)
+            dedout = np.zeros((input.N_order_y,1))
+            for n_order_y in range(input.N_order_y):
+                y_pert = y_est[:]
+                y_pert[n_order_y] += self.eps
+                e_pert = errorFunc(y_ans,y_pert)
+                dedout[n_order_y] = (e_pert-e_init)/(self.eps)
             cur_time2 = time.perf_counter()
             dt_forward += cur_time2 - cur_time1
 
@@ -144,13 +160,14 @@ class DumbNet():
             for n_layer in reversed(range(self.N_layer)):
                 for n_width in range(self.N_width[n_layer]):
                     if n_layer == self.N_layer-1: # Last layer
-                        dNdx_out = 1
+                        dNdx_out = np.zeros(input.N_order_y)
+                        dNdx_out[n_width] = 1
                     else:
                         dNdx_out = 0
                         for n_width2 in range(self.N_width[n_layer+1]):
-                            dNdx_out += self.neurons[n_layer+1][n_width2].dNdx_up[n_width]
+                            dNdx_out += self.neurons[n_layer+1][n_width2].dNdx_in[n_width]
                     self.neurons[n_layer][n_width].out2in(dNdx_out)
-            dedweights = self.get_dNdweights()*dedout
+            dedweights = self.get_dNdweights() @ dedout
             cur_time2 = time.perf_counter()
             dt_backward += cur_time2- cur_time1
 
@@ -182,11 +199,15 @@ class DumbNet():
             ## Iteration status
             if np.remainder(n_iter,200)==0:
                 error_list = np.empty((0),dtype=float)
-                for x_in in x_in_list:
-                    # Forward propagate to compute error
-                    # - Skip if already within tolerance
+                
+                for n_test in range(input.N_x_test):
+                    x_in = np.zeros(input.N_order_x)
+                    for n_order_x in range(input.N_order_x):
+                        i_sel = np.random.randint(0, len(x_in_list[n_order_x]))
+                        x_in[n_order_x] = x_in_list[n_order_x][i_sel]
+
                     y_est = self.in2out(x_in)
-                    y_ans = testFunc(x_in)
+                    y_ans = testFunc(x_in,self.N_first,self.N_last)
                     e_init = errorFunc(y_ans,y_est)
                     error_list = np.append(error_list,e_init)
 
