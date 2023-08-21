@@ -1,8 +1,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import time
 from dumb_net import DumbNet
 from test_func import testFunc
 from error_func import errorFunc
+import cProfile
+import subprocess
 
 ## Objective and procedure
 # Train network that takes single input for single output
@@ -18,9 +21,9 @@ class Setup():
     def __init__(self):
         # Basics
         self.eps = 1E-06 # infinitesimal perturbation to compute gradient
-        self.conv = 0.05 # Convergence threshold
+        self.conv = 0.1 # Convergence threshold
         self.tol = self.conv*0.3 # Acceptable range of error to skip updating
-        self.N_iter = 30000 # Iteration count
+        self.N_iter = 50000 # Iteration count
         self.N_trial = 5 # Trial attempt
         self.weightTrainFrac = 0.3 # Fraction of weight to train per each iteration
         self.weightLearnRate = 0.1  # Weight learning rate
@@ -39,8 +42,9 @@ class Setup():
         # - Must end with 1 for the last neuron without activation function
         self.n_layer_dist = np.array([10,10,10,1])
 
-if __name__ == '__main__':
+def main():
     ## Initialize
+    t_start = time.perf_counter()
     input = Setup()
 
     ## Train network
@@ -50,6 +54,10 @@ if __name__ == '__main__':
         eMinMaxAvg_list = dn.train(input,testFunc,errorFunc)
         if dn.isTrained:
             break
+        
+    ## Duration
+    t_end = time.perf_counter()
+    print("\nElapsed time {:.5f} seconds\n".format(t_end-t_start))
     
     ## Review
     if not dn.isTrained:
@@ -92,3 +100,20 @@ if __name__ == '__main__':
         plt.xlabel('X'); plt.ylabel('Y')
         plt.grid(axis='both',color='0.95')
         plt.show()
+
+if __name__ == '__main__':
+    ## Profiling main
+    profileName = 'temp.prof'
+    profiler = cProfile.Profile()
+    profiler.enable()
+    main()
+    profiler.disable()
+    profiler.dump_stats(profileName)
+    
+    snakeVizCmd = "python -m snakeviz " + profileName
+    removeCmd_dos = "del " + profileName
+    removeCmd_linux = "rm " + profileName
+    p = subprocess.Popen(snakeVizCmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    userInput = input("Enter to complete")
+    p = subprocess.Popen(removeCmd_dos, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    p = subprocess.Popen(removeCmd_linux, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)

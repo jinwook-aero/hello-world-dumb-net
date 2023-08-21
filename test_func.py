@@ -1,5 +1,5 @@
 import numpy as np
-def testFunc(x_in,functionType = 2):
+def testFunc(x_in,functionType = 6):
     ## Target test function to which the network is trained
     # functionType
     # 1: Linear

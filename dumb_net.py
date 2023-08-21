@@ -1,6 +1,7 @@
 import numpy as np
 import time
 from neuron import neuron
+import numba as nb
 
 class DumbNet():
     ## Dumb network that takes single input to set single output
@@ -109,7 +110,7 @@ class DumbNet():
             else:
                 for n_width in range(self.N_width[n_layer]):
                     self.neurons[n_layer][n_width] = neuron(N_leg,initWeight,actFuncType)
-
+ 
     def train(self,input,testFunc,errorFunc):
         # Inputs
         n_iter_list = range(input.N_iter)
@@ -122,7 +123,6 @@ class DumbNet():
         dt_forward = 0
         dt_backward = 0
         dt_leastsquare = 0
-        dt_sol = 0
         for n_iter in n_iter_list:
             # Forward propagate to compute error based on randomly selected x
             # - Skip if already within tolerance
@@ -166,9 +166,7 @@ class DumbNet():
             co_err2D = e_init.reshape(1,1)
             co_b2D = -(co_J2D.transpose()) @ co_err2D
             co_a2D = (co_J2D.transpose()) @ co_J2D
-            cur_time_lq1 = time.perf_counter()
             dx2D = np.linalg.lstsq(co_a2D, co_b2D, rcond=None)[0]
-            cur_time_lq2 = time.perf_counter()
             dx1D = dx2D.reshape(-1,)
             
             # Update weights
@@ -180,7 +178,6 @@ class DumbNet():
             self.setWeights(solWeights)
             cur_time2 = time.perf_counter()
             dt_leastsquare += cur_time2- cur_time1
-            dt_sol += cur_time_lq2- cur_time_lq1
 
             ## Iteration status
             if np.remainder(n_iter,200)==0:
@@ -205,9 +202,8 @@ class DumbNet():
                     tF_forw = dt_forward/dt_total*100
                     tF_back = dt_backward/dt_total*100
                     tF_lq = dt_leastsquare/dt_total*100
-                    tF_sol = dt_sol/dt_total*100
-                    print("\tFraction: Forw={:.2e}, Back={:.2e}, LQ={:.2e}, Sol={:.2e}".format(
-                           tF_forw,tF_back,tF_lq,tF_sol))
+                    print("\tTime Fraction: ForwP={:.1f}%, BackP={:.1f}%, LeastSQ={:.1f}%".format(
+                           tF_forw,tF_back,tF_lq))
                 
                 ## Stagnation check
                 # Breakout if not converging
