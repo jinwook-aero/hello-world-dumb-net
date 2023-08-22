@@ -215,16 +215,17 @@ class DumbNet():
                 eMin_list[n_iter] = min(error_list)
                 eMax_list[n_iter] = max(error_list)
                 eAvg_list[n_iter] = sum(error_list)/len(error_list) 
-                print("Iteration {}, minE={:.2e}, maxE={:.2e}, avgE={:.2e}".format(
-                    n_iter,min(error_list),max(error_list),sum(error_list)/len(error_list)))
+                print("Iteration {}, minE={:.2e}, maxE={:.2e}, avgE={:.2e}, stdE={:.2e}"
+                      .format(n_iter,min(error_list),max(error_list),
+                              sum(error_list)/len(error_list),np.std(error_list)))
                 
                 if n_iter !=0 and np.remainder(n_iter,200*5)==0:
                     dt_total = dt_forward+dt_backward+dt_leastsquare
                     tF_forw = dt_forward/dt_total*100
                     tF_back = dt_backward/dt_total*100
                     tF_lq = dt_leastsquare/dt_total*100
-                    print("\tTime Fraction: ForwP={:.1f}%, BackP={:.1f}%, LeastSQ={:.1f}%".format(
-                           tF_forw,tF_back,tF_lq))
+                    print("\tTime Fraction: ForwP={:.1f}%, BackP={:.1f}%, LeastSQ={:.1f}%"
+                          .format(tF_forw,tF_back,tF_lq))
                 
                 ## Stagnation check
                 # Breakout if not converging

@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib import cm
 import time
 from dumb_net import DumbNet
 from test_func import testFunc
@@ -21,16 +22,16 @@ class Setup():
     def __init__(self):
         # Basics
         self.eps = 1E-06 # infinitesimal perturbation to compute gradient
-        self.conv = 0.3 # Convergence threshold
+        self.conv = 0.25 # Convergence threshold
         self.tol = self.conv*0.3 # Acceptable range of error to skip updating
-        self.N_iter = 10000 # Iteration count
+        self.N_iter = 100_000 # Iteration count
         self.N_trial = 5 # Trial attempt
         self.weightTrainFrac = 0.2 # Fraction of weight to train per each iteration
         self.weightLearnRate = 0.1  # Weight learning rate
 
         # Network In/Out dimension
         self.N_order_x = 2
-        self.N_order_y = 2
+        self.N_order_y = 1
         
         # Train set
         self.x_train_min = np.zeros(self.N_order_x)
@@ -51,7 +52,7 @@ class Setup():
         # Layer distribution
         # - First and last widths determine
         #   the vector dimension of input and output, respectively
-        self.n_layer_dist = np.array([self.N_order_x,20,20,20,self.N_order_y])
+        self.n_layer_dist = np.array([self.N_order_x,10,10,10,10,10,self.N_order_y])
 
 def main(profileName):
     ## Initialize
@@ -114,6 +115,7 @@ def main(profileName):
             ax.legend()
             plt.xlabel('X'); plt.ylabel('Y')
             plt.grid(axis='both',color='0.95')
+
         elif input.N_order_x == 2 and input.N_order_y == 2:
             x_test = np.zeros((input.N_order_x,input.N_x_test))
             x_test[0,:] = np.linspace(input.x_test_min[0],input.x_test_max[0],input.N_x_test)
@@ -127,11 +129,52 @@ def main(profileName):
             fig, ax = plt.subplots()
             ax.plot(x_test[0],y_answer[0],label='Answer 0')
             ax.plot(x_test[1],y_answer[1],label='Answer 1')
-            ax.plot(x_test[0],y_model[0][:],label='Model 0')
-            ax.plot(x_test[1],y_model[1][:],label='Model 1')
+            ax.plot(x_test[0],y_model[0],label='Model 0')
+            ax.plot(x_test[1],y_model[1],label='Model 1')
             ax.legend()
             plt.xlabel('X'); plt.ylabel('Y')
             plt.grid(axis='both',color='0.95')
+            
+        elif input.N_order_x == 2 and input.N_order_y == 1:
+            # Mesh grid
+            N_1D = int(np.sqrt(input.N_x_test))
+            x1D = np.linspace(input.x_test_min[0],input.x_test_max[0],N_1D)
+            y1D = np.linspace(input.x_test_min[1],input.x_test_max[1],N_1D)
+
+            x2D, y2D = np.meshgrid(x1D, y1D, indexing='xy')
+            x2D_vect = np.reshape(x2D,(-1,))
+            y2D_vect = np.reshape(y2D,(-1,))
+            N_2D_vect = len(x2D_vect)
+            
+            # Answer from test function
+            x_test = np.zeros((input.N_order_x,N_2D_vect))
+            x_test[0,:] = x2D_vect
+            x_test[1,:] = y2D_vect
+            z_answer = testFunc(x_test,input.N_order_x,input.N_order_y)
+            z_answer2D = np.reshape(z_answer,(N_1D,N_1D))
+            
+            # Network output
+            z_model = np.zeros((input.N_order_y,N_2D_vect))
+            for n_2D_vect in range(N_2D_vect):
+                z_model[:,n_2D_vect] = dn.in2out([x_test[0][n_2D_vect], x_test[1][n_2D_vect]])
+            z_model2D = np.reshape(z_model,(N_1D,N_1D))
+
+            # 3D plot
+            fig1, ax1 = plt.subplots(subplot_kw={"projection": "3d"})
+            ax1.plot_wireframe(x2D, y2D, z_answer2D, color=(0.9,0.3,0.3),label='Answer')
+            ax1.scatter(x2D, y2D, z_model2D, color=(0.3,0.3,0.9), marker='o', label='Model')
+            plt.legend()
+            plt.xlabel('X'); plt.ylabel('Y'); plt.title("Answer vs Model")
+            plt.grid(axis='both',color='0.95')
+            
+            # Error 2D plot
+            fig2, ax2 = plt.subplots()
+            c = ax2.pcolor(x2D,y2D,z_answer2D-z_model2D, cmap='RdBu', vmin=-1, vmax=+1)
+            fig2.colorbar(c, ax=ax2)
+            ax2.set_title("Error")
+            plt.xlabel('X'); plt.ylabel('Y')
+            plt.grid(axis='both',color='0.95')
+
         else:
             print("No plot type available")
         plt.show()
