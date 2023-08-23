@@ -21,7 +21,9 @@ class DumbNet():
     #   | input.eps # perturbation to compute gradient
     #   | input.tol # Acceptable range within which training is skipped
     #   | input.conv # Convergence criterion
+    #   | input.N_init # Initialization roll count
     #   | input.N_iter # Iteration count
+    #   | input.N_disp # Status display count
     #   | input.x_train_min # Train x range, min
     #   | input.x_train_max # Train x range, max
     #   | input.N_x_train # Train x count
@@ -29,7 +31,7 @@ class DumbNet():
     #   | input.weightTrainFrac # Fraction of weight to train per each iteration
     #   | input.weightLearnRate # Weight learning rate
     #
-    # Last update: August 21, 2023
+    # Last update: August 23, 2023
     # Author: Jinwook Lee
     #
     def __init__(self,n_layer_dist,initWeight=np.NaN,actFuncType=0,eps=1E-10):
@@ -115,17 +117,60 @@ class DumbNet():
                 curActFuncType = actFuncType
             for n_width in range(self.N_width[n_layer]):
                 self.neurons[n_layer][n_width] = neuron(N_in,self.N_last,initWeight,curActFuncType)
- 
-    def train(self,input,testFunc,errorFunc):
-        # Inputs
-        n_iter_list = range(input.N_iter)
+
+    def _trainRoll(self,input,testFunc,errorFunc,N_roll):
+        # Compute output and error of current network
+        # Random roll of x_in for N_roll times 
+        # Output y_ans_list, y_est_list, error_list
         x_in_list = []
         for n_order_x in range(input.N_order_x):
             x_in_list.append(np.linspace(\
                                 input.x_train_min[n_order_x],\
                                 input.x_train_max[n_order_x],\
                                 input.N_x_train))
+            
+        y_ans_list = np.empty((0),dtype=float)
+        y_est_list = np.empty((0),dtype=float)
+        error_list = np.empty((0),dtype=float)
+        for n_roll in range(N_roll):
+            x_in = np.zeros(input.N_order_x)
+            for n_order_x in range(input.N_order_x):
+                i_sel = np.random.randint(0, len(x_in_list[n_order_x]))
+                x_in[n_order_x] = x_in_list[n_order_x][i_sel]
+            y_est = self.in2out(x_in)
+            y_ans = testFunc(x_in,self.N_first,self.N_last)
+            e_cur = errorFunc(y_ans,y_est)
 
+            error_list = np.append(error_list,e_cur)
+            y_ans_list = np.append(y_ans_list,y_ans)
+            y_est_list = np.append(y_est_list,y_est)
+        
+        return y_ans_list, y_est_list, error_list
+
+    def train(self,input,testFunc,errorFunc):
+        # Current status
+        _,_,error_old = self._trainRoll(input,testFunc,errorFunc,input.N_x_test)
+        print("Initialization, minE={:.2e}, maxE={:.2e}, avgE={:.2e}, stdE={:.2e}"
+                .format(min(error_old),max(error_old),
+                        sum(error_old)/len(error_old),np.std(error_old)))
+        
+        # Initial rolls
+        for n_init in range(input.N_init):
+            oldWeights = self.getWeights()
+            newWeights = 2*np.random.rand(np.size(oldWeights))-1 # [-1,1]
+            self.setWeights(newWeights)
+            _,_,error_new = self._trainRoll(input,testFunc,errorFunc,input.N_x_test)
+
+            if np.mean(np.abs(error_new)) < np.mean(np.abs(error_old)):
+                # Improved roll
+                print("Random roll {}, minE={:.2e}, maxE={:.2e}, avgE={:.2e}, stdE={:.2e}"
+                        .format(n_init,min(error_new),max(error_new),
+                                sum(error_new)/len(error_new),np.std(error_new)))
+                error_old = error_new[:] # Set new baseline
+            else:
+                # Revert for worse roll
+                self.setWeights(oldWeights)
+        
         # Iterations
         eMin_list = np.full([input.N_iter], np.nan)
         eMax_list = np.full([input.N_iter], np.nan)
@@ -133,22 +178,17 @@ class DumbNet():
         dt_forward = 0
         dt_backward = 0
         dt_leastsquare = 0
-        for n_iter in n_iter_list:
+        for n_iter in range(input.N_iter):
             # Forward propagate to compute error based on randomly selected x
             # - Skip if already within tolerance
             cur_time1 = time.perf_counter()
-            x_in = np.zeros(input.N_order_x)
-            for n_order_x in range(input.N_order_x):
-                i_sel = np.random.randint(0, len(x_in_list[n_order_x]))
-                x_in[n_order_x] = x_in_list[n_order_x][i_sel]
-            y_est = self.in2out(x_in)
-            y_ans = testFunc(x_in,self.N_first,self.N_last)
-            e_init = errorFunc(y_ans,y_est)
+            y_ans,y_est,error_cur = self._trainRoll(input,testFunc,errorFunc,1)
+            e_init = error_cur[0]
             
             # Sensitivity of error to network output
             dedout = np.zeros((input.N_order_y,1))
             for n_order_y in range(input.N_order_y):
-                y_pert = y_est[:]
+                y_pert = y_est
                 y_pert[n_order_y] += self.eps
                 e_pert = errorFunc(y_ans,y_pert)
                 dedout[n_order_y] = (e_pert-e_init)/(self.eps)
@@ -197,19 +237,9 @@ class DumbNet():
             dt_leastsquare += cur_time2- cur_time1
 
             ## Iteration status
-            if np.remainder(n_iter,200)==0:
-                error_list = np.empty((0),dtype=float)
-                
-                for n_test in range(input.N_x_test):
-                    x_in = np.zeros(input.N_order_x)
-                    for n_order_x in range(input.N_order_x):
-                        i_sel = np.random.randint(0, len(x_in_list[n_order_x]))
-                        x_in[n_order_x] = x_in_list[n_order_x][i_sel]
-
-                    y_est = self.in2out(x_in)
-                    y_ans = testFunc(x_in,self.N_first,self.N_last)
-                    e_init = errorFunc(y_ans,y_est)
-                    error_list = np.append(error_list,e_init)
+            dn_iter = int(np.floor(input.N_iter/input.N_disp))
+            if np.remainder(n_iter,dn_iter)==0:
+                _,_,error_list = self._trainRoll(input,testFunc,errorFunc,input.N_x_test)
 
                 # Display
                 eMin_list[n_iter] = min(error_list)
@@ -219,7 +249,7 @@ class DumbNet():
                       .format(n_iter,min(error_list),max(error_list),
                               sum(error_list)/len(error_list),np.std(error_list)))
                 
-                if n_iter !=0 and np.remainder(n_iter,200*5)==0:
+                if n_iter !=0 and np.remainder(n_iter,dn_iter*5)==0:
                     dt_total = dt_forward+dt_backward+dt_leastsquare
                     tF_forw = dt_forward/dt_total*100
                     tF_back = dt_backward/dt_total*100

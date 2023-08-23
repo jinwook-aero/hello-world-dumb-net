@@ -13,7 +13,7 @@ import subprocess
 # Update default functionType in test_func.py to aim for different targets
 # Adjust Setup class parameters for network tuning
 #
-# Last update: August 21, 2023
+# Last update: August 23, 2023
 # Author: Jinwook Lee
 #
 
@@ -22,15 +22,17 @@ class Setup():
     def __init__(self):
         # Basics
         self.eps = 1E-06 # infinitesimal perturbation to compute gradient
-        self.conv = 0.25 # Convergence threshold
+        self.conv = 0.2 # Convergence threshold
         self.tol = self.conv*0.3 # Acceptable range of error to skip updating
         self.N_iter = 100_000 # Iteration count
+        self.N_disp = 200 # Status display count
         self.N_trial = 5 # Trial attempt
+        self.N_init = 20 # Initial roll
         self.weightTrainFrac = 0.2 # Fraction of weight to train per each iteration
         self.weightLearnRate = 0.1  # Weight learning rate
 
         # Network In/Out dimension
-        self.N_order_x = 2
+        self.N_order_x = 2        
         self.N_order_y = 1
         
         # Train set
@@ -52,7 +54,10 @@ class Setup():
         # Layer distribution
         # - First and last widths determine
         #   the vector dimension of input and output, respectively
-        self.n_layer_dist = np.array([self.N_order_x,10,10,10,10,10,self.N_order_y])
+        self.n_layer_dist = np.array([self.N_order_x,30,30,30,self.N_order_y])
+
+        # Profiling
+        self.profiling_flag = False
 
 def main(profileName):
     ## Initialize
